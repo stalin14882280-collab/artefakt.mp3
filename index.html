@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARTEFAKT — биты</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<style>
+:root{--bg:#050309;--p:#a855f7;--p2:#6d28d9;--pk:#e879f9;--card:#0f0819;--line:#2b1648;--t:#f5ecff;--m:#8f7bb0;--ok:#4ade80;--bad:#fb7185}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t);font:16px/1.5 "Segoe UI",system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+.orb{position:fixed;border-radius:50%;filter:blur(110px);z-index:-2;animation:drift 18s ease-in-out infinite alternate}
+.o1{width:520px;height:520px;background:#5b21b6;top:-160px;left:-120px;opacity:.55}
+.o2{width:460px;height:460px;background:#a21caf;bottom:-160px;right:-100px;opacity:.38;animation-delay:-9s}
+.grid{position:fixed;inset:0;z-index:-1;background-image:linear-gradient(#a855f711 1px,transparent 1px),linear-gradient(90deg,#a855f711 1px,transparent 1px);background-size:46px 46px;mask-image:radial-gradient(ellipse at center,#000 30%,transparent 80%)}
+@keyframes drift{to{transform:translate(120px,80px) scale(1.2)}}
+button{font:inherit;color:inherit;cursor:pointer;border:0}
+.btn{background:linear-gradient(135deg,var(--p2),var(--p));padding:12px 22px;border-radius:12px;font-weight:700;letter-spacing:.3px;box-shadow:0 0 0 #a855f700;transition:transform .12s,box-shadow .2s}
+.btn:hover{box-shadow:0 0 28px #a855f799;transform:translateY(-2px)}
+.btn:active{transform:scale(.96)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--t)}
+.btn.sm{padding:7px 14px;font-size:14px}
+input{width:100%;background:#0a0613;border:1px solid var(--line);color:var(--t);padding:13px 15px;border-radius:12px;font:inherit;margin-bottom:12px;outline:0;transition:border .2s,box-shadow .2s}
+input:focus{border-color:var(--p);box-shadow:0 0 0 3px #a855f733}
+.hide{display:none!important}
+/* AUTH */
+#auth{min-height:100vh;display:grid;place-items:center;padding:20px}
+.box{width:min(400px,100%);background:#0f0819cc;backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:22px;padding:34px;animation:rise .9s cubic-bezier(.2,.9,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(40px) scale(.96)}}
+.logo{font-size:44px;font-weight:900;letter-spacing:6px;text-align:center;position:relative;background:linear-gradient(90deg,#fff,var(--pk),var(--p));-webkit-background-clip:text;background-clip:text;color:transparent}
+.logo::before,.logo::after{content:attr(data-t);position:absolute;left:0;right:0;top:0;background:inherit;-webkit-background-clip:text;background-clip:text;opacity:.7}
+.logo::before{animation:gl 3.2s infinite;clip-path:inset(0 0 60% 0);transform:translateX(-2px)}
+.logo::after{animation:gl 2.6s infinite reverse;clip-path:inset(60% 0 0 0);transform:translateX(2px)}
+@keyframes gl{0%,90%,100%{transform:translateX(0)}93%{transform:translateX(-5px)}96%{transform:translateX(5px)}}
+.sub{text-align:center;color:var(--m);margin:6px 0 26px}
+.sw{display:flex;gap:6px;background:#0a0613;padding:5px;border-radius:14px;margin-bottom:20px}
+.sw button{flex:1;background:none;padding:9px;border-radius:10px;color:var(--m);font-weight:600}
+.sw button.on{background:var(--p2);color:#fff}
+.err{color:var(--bad);min-height:22px;font-size:14px;margin-bottom:6px}
+/* APP */
+header{display:flex;align-items:center;gap:18px;padding:16px 5vw;border-bottom:1px solid var(--line);backdrop-filter:blur(10px);position:sticky;top:0;z-index:5;background:#050309cc;flex-wrap:wrap}
+header .logo{font-size:24px;letter-spacing:4px}
+nav{display:flex;gap:6px;flex:1}
+.tab{background:none;padding:8px 16px;border-radius:10px;color:var(--m);font-weight:600}
+.tab.on{background:#a855f722;color:var(--pk)}
+main{padding:34px 5vw 80px;max-width:1200px;margin:auto}
+h2{font-size:clamp(30px,5vw,54px);letter-spacing:-1px;line-height:1.05;margin-bottom:8px}
+.lead{color:var(--m);margin-bottom:30px}
+.beats{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:20px}
+.beat{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;transition:transform .25s,border-color .25s,box-shadow .25s}
+.beat:hover{transform:translateY(-6px) rotate(-.4deg);border-color:var(--p);box-shadow:0 14px 40px #6d28d955}
+.art{height:150px;display:flex;align-items:flex-end;gap:4px;padding:16px;position:relative}
+.art svg{position:absolute;inset:0;width:100%;height:100%}.art i{position:relative;opacity:0;flex:1;background:#ffffff55;border-radius:3px 3px 0 0;height:20%;transition:height .3s}
+.art.pl i{animation:eq .7s ease-in-out infinite alternate;background:#fff;opacity:.85}
+@keyframes eq{to{height:95%}}
+.art b{z-index:1;position:absolute;top:12px;left:16px;font-size:12px;background:#000a;padding:3px 10px;border-radius:99px}
+.info{padding:16px}
+.info h3{font-size:20px}
+.meta{color:var(--m);font-size:14px;margin:2px 0 14px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.price{font-size:22px;font-weight:800;color:var(--pk)}
+/* modal */
+.modal{position:fixed;inset:0;background:#000b;display:grid;place-items:center;z-index:20;padding:16px;overflow:auto}
+.mb{width:min(480px,100%);background:#0f0819;border:1px solid var(--p2);border-radius:20px;padding:26px;animation:rise .4s}
+.mb h3{margin-bottom:12px}
+.pay{background:#0a0613;border:1px dashed var(--p);border-radius:14px;padding:14px;margin:12px 0;text-align:center}
+.pay big{display:block;font-size:26px;font-weight:800;letter-spacing:1px;color:var(--pk)}
+.chk{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:15px}
+.chk span:first-child{width:22px}.chk em{margin-left:auto;color:var(--m);font-style:normal;text-align:right;word-break:break-word}
+.bar{height:6px;background:#1c0f30;border-radius:9px;overflow:hidden;margin:12px 0}.bar div{height:100%;width:0;background:linear-gradient(90deg,var(--p2),var(--pk));transition:width .2s}
+.small{color:var(--m);font-size:13px}
+/* table / stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:26px}
+.st{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+.st b{display:block;font-size:32px;color:var(--pk)}
+.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:16px}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--m);font-weight:600}
+.tag{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700}
+.tag.ok{background:#4ade8022;color:var(--ok)}.tag.wait{background:#fbbf2422;color:#fbbf24}
+.pb{height:8px;background:#1c0f30;border-radius:9px;overflow:hidden;min-width:120px}.pb div{height:100%;background:linear-gradient(90deg,var(--p2),var(--pk))}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--p2),var(--pk));padding:14px 26px;border-radius:14px;font-weight:700;z-index:30;animation:rise .4s}
+#snd{position:fixed;right:16px;bottom:16px;z-index:9;background:#0f0819;border:1px solid var(--line);border-radius:50%;width:44px;height:44px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div><div class="grid"></div>
+<button id="snd" title="Звук">🔊</button>
+
+<section id="auth">
+ <div class="box">
+  <div class="logo" data-t="ARTEFAKT">ARTEFAKT</div>
+  <p class="sub">Биты от битмейкера. Войди, чтобы купить.</p>
+  <div class="sw"><button id="tl" class="on">Вход</button><button id="tr">Регистрация</button></div>
+  <input id="u" placeholder="Имя пользователя" autocomplete="username">
+  <input id="p" type="password" placeholder="Пароль" autocomplete="current-password">
+  <input id="p2" type="password" placeholder="Повтори пароль" class="hide">
+  <div class="err" id="err"></div>
+  <button class="btn" id="go" style="width:100%">Войти</button>
+ </div>
+</section>
+
+<section id="app" class="hide">
+ <header><div class="logo" data-t="ARTEFAKT">ARTEFAKT</div>
+  <nav><button class="tab on" data-v="shop">Биты</button><button class="tab" data-v="my">Мои покупки</button><button class="tab hide" id="adm" data-v="admin">Админ</button></nav>
+  <span class="small" id="who"></span><button class="btn ghost sm" id="out">Выйти</button></header>
+ <main id="view"></main>
+</section>
+
+<script>
+/* ===== НАСТРОЙКИ ===== */
+const PHONE='89131264135', ADMIN='artefakt';
+const P={mp3:1000,wav:1600};
+const BEATS=[ // file — 35-сек превью из папки beats/
+ {id:1,name:'Contract',dur:'2:59',file:'beats/contract.mp3',c:['#2e1065','#a855f7']},
+ {id:2,name:'Monopoly',dur:'1:55',file:'beats/monopoly.mp3',c:['#1e1b4b','#c026d3']},
+ {id:3,name:'Job',dur:'1:36',file:'beats/job.mp3',c:['#3b0764','#8b5cf6']},
+ {id:4,name:'Ne Yeban',dur:'1:38',file:'beats/ne-yeban.mp3',c:['#4a044e','#d946ef']},
+ {id:5,name:'Главный герой',dur:'2:47',file:'beats/glavnyi-geroi.mp3',c:['#2e1065','#e879f9']}];
+/* обложки: один стиль (градиент, звёзды, зерно, виньетка, рамка), разные сцены */
+const SC={
+1:c=>`<circle cx="215" cy="46" r="22" fill="${c[1]}" opacity=".9"/><path d="M0 150V105L50 62l38 42 44-52 56 62 40-36 72 46v16z" fill="#1a0a33"/><path d="M0 150V125l60-30 50 28 60-34 70 40 60-20v41z" fill="#0b0518"/>`,
+2:c=>`<circle cx="70" cy="42" r="16" fill="${c[1]}" opacity=".85"/>`+[[8,84,26],[38,58,22],[64,92,20],[88,48,26],[118,76,22],[144,98,18],[166,54,28],[198,82,22],[224,64,24],[252,90,26]].map(([x,t,w],i)=>`<rect x="${x}" y="${t}" width="${w}" height="${150-t}" fill="#0b0518"/><rect x="${x+4}" y="${t+8}" width="3" height="3" fill="${c[1]}"/><rect x="${x+w-8}" y="${t+20}" width="3" height="3" fill="${c[1]}" opacity=".7"/>`).join(''),
+3:c=>`<circle cx="235" cy="38" r="15" fill="${c[1]}" opacity=".85"/>`+[[20,60,'#1a0a33'],[90,75,'#1a0a33'],[170,66,'#1a0a33'],[250,72,'#1a0a33'],[55,88,'#0b0518'],[130,96,'#0b0518'],[205,90,'#0b0518'],[280,84,'#0b0518']].map(([x,h,f])=>`<path d="M${x-20} 150L${x} ${150-h}L${x+20} 150z" fill="${f}"/>`).join('')+`<rect y="140" width="300" height="10" fill="#07030f"/>`,
+4:c=>`<circle cx="150" cy="92" r="42" fill="${c[1]}" opacity=".85"/>`+[[96,'#2a1250'],[110,'#1a0a33'],[124,'#0f0620'],[138,'#07030f']].map(([y,f],i)=>`<path d="M0 ${y}Q37 ${y-14-i*2} 75 ${y}T150 ${y}T225 ${y}T300 ${y}V150H0z" fill="${f}"/>`).join(''),
+5:c=>`<circle cx="205" cy="88" r="44" fill="${c[1]}" opacity=".9"/><path d="M0 150V92l62-8 38 22 24 44z" fill="#0b0518"/><circle cx="64" cy="74" r="3" fill="#0b0518"/><rect x="61.5" y="77" width="5" height="9" rx="1.5" fill="#0b0518"/><path d="M130 150l60-40 110 40z" fill="#1a0a33" opacity=".9"/>`};
+const art=b=>{const i=b.id;return `<svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${b.c[0]}"/><stop offset="1" stop-color="${b.c[1]}" stop-opacity=".55"/></linearGradient><radialGradient id="v${i}"><stop offset=".5" stop-color="#0000"/><stop offset="1" stop-color="#000d"/></radialGradient><filter id="n${i}"><feTurbulence baseFrequency=".85" numOctaves="2"/><feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .09 0"/></filter></defs><rect width="300" height="150" fill="#050309"/><rect width="300" height="150" fill="url(#g${i})"/>`+Array.from({length:16},(_,k)=>`<circle cx="${(k*83+i*41)%300}" cy="${(k*29+i*17)%64}" r=".9" fill="#fff" opacity=".7"/>`).join('')+SC[i](b.c)+`<rect width="300" height="150" filter="url(#n${i})"/><rect width="300" height="150" fill="url(#v${i})"/><rect x="5" y="5" width="290" height="140" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width=".6"/><text x="288" y="138" text-anchor="end" font-size="7" letter-spacing="3" fill="#fff" fill-opacity=".75" font-family="Segoe UI,sans-serif" font-weight="700">ARTEFAKT</text></svg>`};
+
+/* ===== ХРАНИЛИЩЕ (localStorage) ===== */
+const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const rub=n=>n.toLocaleString('ru-RU')+' ₽';
+let me=null,playing=null,loop=null,aud=null;
+
+/* ===== ЗВУКИ (WebAudio) ===== */
+let AC,mute=false;const ac=()=>AC||(AC=new(window.AudioContext||window.webkitAudioContext)());
+function noise(t,d,f,v){const c=ac(),n=c.sampleRate*d,b=c.createBuffer(1,n,c.sampleRate),a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=Math.random()*2-1;const s=c.createBufferSource();s.buffer=b;const h=c.createBiquadFilter();h.type='highpass';h.frequency.value=f;const g=c.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);s.connect(h).connect(g).connect(c.destination);s.start(t)}
+function tone(f,t,d,type='sine',v=.3){const c=ac(),o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(c.destination);o.start(t);o.stop(t+d)}
+function kick(t,v=.9){const c=ac(),o=c.createOscillator(),g=c.createGain();o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(40,t+.12);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g).connect(c.destination);o.start(t);o.stop(t+.3)}
+const now=()=>ac().currentTime;
+const hat=()=>{if(!mute)try{noise(now(),.05,7500,.22)}catch{}};
+const kk=()=>{if(!mute)try{kick(now())}catch{}};
+function win(){if(mute)return;const t=now();kick(t);[523,659,784,1047].forEach((f,i)=>tone(f,t+.12+i*.09,.35,'triangle',.25));noise(t+.12,.05,8000,.2)}
+$('#snd').onclick=()=>{mute=!mute;$('#snd').textContent=mute?'🔇':'🔊'};
+document.addEventListener('pointerover',e=>{const b=e.target.closest('button,.beat,.tab');if(b&&!b.contains(e.relatedTarget))hat()});
+document.addEventListener('pointerdown',e=>{if(e.target.closest('button'))kk()});
+
+/* ===== АВТОРИЗАЦИЯ ===== */
+let mode='in';
+const setMode=m=>{mode=m;$('#tl').classList.toggle('on',m=='in');$('#tr').classList.toggle('on',m=='up');$('#p2').classList.toggle('hide',m=='in');$('#go').textContent=m=='in'?'Войти':'Создать аккаунт';$('#err').textContent=''};
+$('#tl').onclick=()=>setMode('in');$('#tr').onclick=()=>setMode('up');
+$('#go').onclick=async()=>{
+ const u=$('#u').value.trim(),p=$('#p').value,users=ld('users',{}),k=u.toLowerCase(),er=$('#err');
+ if(!/^[\wа-яё-]{3,20}$/i.test(u))return er.textContent='Имя: 3–20 символов, буквы и цифры';
+ if(p.length<6)return er.textContent='Пароль минимум 6 символов';
+ if(mode=='up'){
+  if(p!==$('#p2').value)return er.textContent='Пароли не совпадают';
+  if(users[k])return er.textContent='Такое имя уже занято';
+  const salt=crypto.getRandomValues(new Uint32Array(4)).join('-');
+  users[k]={name:u,salt,hash:await sha(salt+p),at:new Date().toISOString()};sv('users',users);
+ }else{
+  const x=users[k];if(!x||x.hash!==await sha(x.salt+p))return er.textContent='Неверное имя или пароль';
+ }
+ sessionStorage.setItem('ses',k);enter();
+};
+['u','p','p2'].forEach(i=>$('#'+i).addEventListener('keydown',e=>e.key=='Enter'&&$('#go').click()));
+function enter(){const k=sessionStorage.getItem('ses'),x=ld('users',{})[k];if(!x)return;me={k,name:x.name,admin:k===ADMIN};
+ $('#auth').classList.add('hide');$('#app').classList.remove('hide');$('#who').textContent=x.name;$('#adm').classList.toggle('hide',!me.admin);show('shop')}
+$('#out').onclick=()=>{stop();sessionStorage.removeItem('ses');location.reload()};
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
+
+/* ===== ПРЕВЬЮ ===== */
+function stop(){clearInterval(loop);if(aud){aud.pause();aud=null}playing=null}
+function play(i){const was=playing;stop();if(was===i)return show(cur);playing=i;const b=BEATS.find(x=>x.id==i);
+ if(b.file){aud=new Audio(b.file);aud.play().catch(()=>{});aud.onended=()=>{playing=null;show(cur)}}
+ else{ac().resume();let s=0;const st=60/b.bpm/4,sc=[1,1,1.2,1,1.5,1,1.2,1.33];
+  loop=setInterval(()=>{const t=now()+.03,x=s%16;if([0,3,6,10].includes(x))kick(t);if(x==4||x==12)noise(t,.14,1600,.35);if(x%2==0)noise(t,.04,8000,.14);if(x%4==0)tone(b.root*sc[(s>>2)%8],t,st*3.5,'sawtooth',.12);s++},st*1000)}
+ show(cur)}
+
+/* ===== ВИДЫ ===== */
+let cur='shop';
+function show(v){cur=v;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v==v));$('#view').innerHTML=v=='shop'?shop():v=='my'?mine():admin()}
+const orders=()=>ld('orders',[]);
+const owned=id=>orders().some(o=>o.user===me.k&&o.beat===id&&o.status==='paid');
+function shop(){return `<h2>Биты ARTEFAKT</h2><p class="lead">Послушай превью, выбери формат — MP3 за ${rub(P.mp3)} или WAV за ${rub(P.wav)} — и оплати переводом. Чек проверяется автоматически.</p><div class="beats">`+BEATS.map(b=>{
+ const bars=Array.from({length:14},(_,i)=>`<i style="animation-delay:${(i*.07).toFixed(2)}s;height:${20+(i*37+b.id*13)%60}%"></i>`).join('');
+ return `<div class="beat"><div class="art ${playing==b.id?'pl':''}">${art(b)}<b>${b.dur}</b>${bars}</div><div class="info"><h3>${b.name}</h3><div class="meta">MP3 ${rub(P.mp3)} · WAV ${rub(P.wav)}</div><div class="row"><span class="small">Превью 0:35</span><span><button class="btn ghost sm" onclick="play(${b.id})">${playing==b.id?'⏸ Стоп':'▶ Слушать'}</button> ${owned(b.id)?'<span class="tag ok">Куплен</span>':`<button class="btn sm" onclick="buy(${b.id})">Купить</button>`}</span></div></div></div>`}).join('')+'</div>'}
+function mine(){const o=orders().filter(x=>x.user===me.k);return `<h2>Мои покупки</h2><p class="lead">Здесь появляются купленные биты.</p>`+(o.length?`<div class="tw"><table><tr><th>Бит</th><th>Сумма</th><th>Дата</th><th>Статус</th><th></th></tr>`+o.map(x=>{const b=BEATS.find(y=>y.id==x.beat);return `<tr><td>${b.name} <span class="small">${(x.fmt||'mp3').toUpperCase()}</span></td><td>${rub(x.price)}</td><td>${new Date(x.at).toLocaleString('ru-RU')}</td><td><span class="tag ${x.status=='paid'?'ok':'wait'}">${x.status=='paid'?'Оплачен':'На проверке'}</span></td><td>${x.status=='paid'?(b.full?`<a href="${b.full}" download style="color:var(--pk)">Скачать</a>`:'<span class="small">файл пришлёт битмейкер</span>'):''}</td></tr>`}).join('')+'</table></div>':'<p class="small">Покупок пока нет. Открой вкладку «Биты».</p>')}
+function admin(){if(!me.admin)return'';const o=orders(),paid=o.filter(x=>x.status==='paid'),sum=paid.reduce((a,x)=>a+x.price,0),users=Object.keys(ld('users',{})).length,wait=o.filter(x=>x.status!=='paid').length;
+ const per=BEATS.map(b=>({b,n:paid.filter(x=>x.beat==b.id).length,s:paid.filter(x=>x.beat==b.id).reduce((a,x)=>a+x.price,0)})),mx=Math.max(1,...per.map(p=>p.s));
+ return `<h2>Админ-панель</h2><p class="lead">Продажи и прибыль.</p><div class="stats"><div class="st"><span class="small">Прибыль</span><b>${rub(sum)}</b></div><div class="st"><span class="small">Продано битов</span><b>${paid.length}</b></div><div class="st"><span class="small">Ждут проверки</span><b>${wait}</b></div><div class="st"><span class="small">Пользователей</span><b>${users}</b></div></div>
+ <h3 style="margin:10px 0">Прибыль по битам</h3><div class="tw" style="margin-bottom:26px"><table><tr><th>Бит</th><th>Продаж</th><th>Прибыль</th><th></th></tr>${per.map(p=>`<tr><td>${p.b.name}</td><td>${p.n}</td><td>${rub(p.s)}</td><td><div class="pb"><div style="width:${p.s/mx*100}%"></div></div></td></tr>`).join('')}</table></div>
+ <div class="row" style="margin:10px 0"><h3>История покупок</h3><button class="btn ghost sm" onclick="csv()">Скачать CSV</button></div><div class="tw"><table><tr><th>Дата</th><th>Покупатель</th><th>Бит</th><th>Сумма</th><th>Чек (дата / получатель)</th><th>Статус</th><th></th></tr>`+
+ (o.length?o.slice().reverse().map(x=>`<tr><td>${new Date(x.at).toLocaleString('ru-RU')}</td><td>${esc(x.name)}</td><td>${BEATS.find(y=>y.id==x.beat).name} <span class="small">${(x.fmt||'mp3').toUpperCase()}</span></td><td>${rub(x.price)}</td><td class="small">${esc(x.rdate||'—')} · ${rub(x.ramount||0)}<br>${esc(x.rto||'—')}</td><td><span class="tag ${x.status=='paid'?'ok':'wait'}">${x.status=='paid'?'Оплачен':'Проверка'}</span></td><td>${x.status!=='paid'?`<button class="btn sm" onclick="approve('${x.id}')">Подтвердить</button>`:''}</td></tr>`).join(''):'<tr><td colspan="7" class="small">Пока пусто</td></tr>')+'</table></div>'}
+function approve(id){const o=orders();o.find(x=>x.id===id).status='paid';sv('orders',o);show('admin')}
+function csv(){const r=[['Дата','Покупатель','Бит','Формат','Сумма','Дата чека','Получатель','Статус'],...orders().map(x=>[x.at,x.name,BEATS.find(y=>y.id==x.beat).name,(x.fmt||'mp3'),x.price,x.rdate,x.rto,x.status])];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+r.map(l=>l.map(c=>`"${c??''}"`).join(';')).join('\n')],{type:'text/csv'}));a.download='sales.csv';a.click()}
+
+/* ===== ПОКУПКА + РАСПОЗНАВАНИЕ ЧЕКА ===== */
+const MON='янв фев мар апр мая июн июл авг сен окт ноя дек'.split(' ');
+function parseReceipt(t){
+ t=t.replace(/\u00a0/g,' ');const r={date:null,amount:null,to:null,phone:null};
+ let m=t.match(/(\d{2})[.\/](\d{2})[.\/](\d{4})/);if(m)r.date=new Date(+m[3],m[2]-1,+m[1]);
+ else if(m=t.match(/(\d{1,2})\s+([а-яё]{3,8})\.?,?\s+(\d{4})/i)){const i=MON.indexOf(m[2].slice(0,3).toLowerCase());if(i>=0)r.date=new Date(+m[3],i,+m[1])}
+ const num=s=>{const n=parseFloat(s.replace(/\s/g,'').replace(',','.'));return isNaN(n)?null:n};
+ m=t.match(/сумм[а-я]*[^\d\n]{0,20}(\d[\d ]*(?:[.,]\d{1,2})?)/i)||t.match(/(\d[\d ]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|RUB|P\b)/i);if(m)r.amount=num(m[1]);
+ m=t.match(/(?:получател[ьяе]|кому)[:\s]*([^\n]{3,40})/i);if(m)r.to=m[1].trim();
+ m=t.match(/(?:\+7|8)[\s\-()]*(\d{3})[\s\-()]*(\d{3})[\s\-]*(\d{2})[\s\-]*(\d{2})/);if(m)r.phone='8'+m[1]+m[2]+m[3]+m[4];
+ return r}
+const d2=d=>d?d.toLocaleDateString('ru-RU'):'не найдена';
+function buy(id){const b=BEATS.find(x=>x.id==id);let fmt='mp3';const pr=()=>P[fmt];const el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="mb"><h3>Покупка: ${b.name}</h3><div class="sw" id="fm"><button data-f="mp3" class="on">MP3 · ${rub(P.mp3)}</button><button data-f="wav">WAV · ${rub(P.wav)}</button></div>
+ <p class="small">1. Переведи сумму на Т-Банк по номеру телефона:</p>
+ <div class="pay"><big id="amt">${rub(P.mp3)}</big><span>Т-Банк · ${PHONE.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/,'+7 ($2) $3-$4-$5').replace(/^\+7/,'8')}</span><br><button class="btn ghost sm" id="cp" style="margin-top:10px">Скопировать номер</button></div>
+ <p class="small">2. Загрузи скриншот электронного чека — сайт сам прочитает дату, сумму и получателя.</p>
+ <input type="file" id="f" accept="image/*" style="margin-top:10px"><div class="bar hide" id="bar"><div></div></div><div id="res"></div>
+ <div class="row" style="margin-top:12px"><button class="btn ghost" id="x">Закрыть</button><button class="btn" id="chk">Проверить чек</button></div></div>`;
+ document.body.appendChild(el);const close=()=>el.remove();
+ el.querySelector('#x').onclick=close;el.querySelectorAll('#fm button').forEach(x=>x.onclick=()=>{fmt=x.dataset.f;el.querySelectorAll('#fm button').forEach(y=>y.classList.toggle('on',y===x));el.querySelector('#amt').textContent=rub(pr())});el.querySelector('#cp').onclick=()=>{navigator.clipboard?.writeText(PHONE);el.querySelector('#cp').textContent='Скопировано ✓'};
+ el.querySelector('#chk').onclick=async()=>{
+  const f=el.querySelector('#f').files[0],res=el.querySelector('#res');if(!f)return res.innerHTML='<p class="err">Выбери файл с чеком</p>';
+  const fp=[f.name,f.size,f.lastModified].join('|');if(orders().some(o=>o.fp===fp))return res.innerHTML='<p class="err">Этот чек уже использован</p>';
+  const bar=el.querySelector('#bar');bar.classList.remove('hide');const fill=bar.firstElementChild;res.innerHTML='<p class="small">Читаю чек…</p>';
+  let text;try{text=(await Tesseract.recognize(f,'rus+eng',{logger:m=>{if(m.progress)fill.style.width=Math.round(m.progress*100)+'%'}})).data.text}catch{return res.innerHTML='<p class="err">Не удалось распознать. Проверь интернет и попробуй снова.</p>'}
+  const r=parseReceipt(text),days=r.date?(Date.now()-r.date)/864e5:99;
+  const c=[[r.date&&days>=-1&&days<=3,'Дата',d2(r.date)],[r.amount===pr(),'Сумма',r.amount!=null?rub(r.amount):'не найдена'],[r.phone===PHONE,'Получатель',(r.to?esc(r.to)+' · ':'')+(r.phone||'номер не найден')]];
+  const ok=c.every(x=>x[0]);
+  res.innerHTML=c.map(x=>`<div class="chk"><span>${x[0]?'✅':'❌'}</span><span>${x[1]}</span><em>${x[2]}</em></div>`).join('')+(ok?'':'<p class="small" style="margin-top:8px">Не всё совпало. Можно отправить чек на ручную проверку — битмейкер подтвердит вручную.</p>');
+  const o=orders(),rec={id:'o'+Date.now(),user:me.k,name:me.name,beat:b.id,price:pr(),fmt,at:new Date().toISOString(),rdate:d2(r.date),ramount:r.amount,rto:(r.to||'')+' '+(r.phone||''),fp,status:ok?'paid':'pending'};
+  const act=el.querySelector('#chk');act.textContent=ok?'Готово':'Отправить на проверку';
+  act.onclick=()=>{o.push(rec);sv('orders',o);close();if(ok){win();toast('Покупка успешна! 🔥')}else toast('Чек отправлен на проверку');show(cur)};
+  if(ok){act.click()}
+ }}
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3200)}
+if(sessionStorage.getItem('ses'))enter();
+</script>
+</body>
+</html>
