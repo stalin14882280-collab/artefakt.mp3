@@ -177,8 +177,14 @@ $('#go').onclick=async()=>{
   if(mode=='up'){
    if(p!==$('#p2').value)return er.textContent='Пароли не совпадают';
    const tg=tgN($('#tg').value);if(!tg)return er.textContent='Укажи Telegram: @username (5–32 символа, латиница, цифры, _)';
-   const {data,error}=await sb.auth.signUp({email:em,password:p});
-   if(error)return er.textContent=/registered|already/i.test(error.message)?'Такое имя уже занято':'Ошибка: '+error.message;
+   let {data,error}=await sb.auth.signUp({email:em,password:p});
+   if(error&&/registered|already/i.test(error.message)){
+    const s2=await sb.auth.signInWithPassword({email:em,password:p});
+    if(s2.error)return er.textContent='Такое имя уже занято';
+    const ex=await sb.from('profiles').select('id').eq('id',s2.data.user.id).maybeSingle();
+    if(ex.data){await sb.auth.signOut();return er.textContent='Аккаунт уже есть — открой вкладку «Вход»'}
+    data=s2.data;error=null}
+   if(error)return er.textContent='Ошибка: '+error.message;
    if(!data.session)return er.textContent='В Supabase отключи подтверждение почты (Confirm email)';
    const r=await sb.from('profiles').insert({id:data.user.id,username:u,tg});
    if(r.error){await sb.auth.signOut();return er.textContent=/duplicate|unique/i.test(r.error.message)?'Такое имя уже занято':'Ошибка: '+r.error.message}
