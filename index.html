@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARTEFAKT — биты</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 <style>
 :root{--bg:#050309;--p:#a855f7;--p2:#6d28d9;--pk:#e879f9;--card:#0f0819;--line:#2b1648;--t:#f5ecff;--m:#8f7bb0;--ok:#4ade80;--bad:#fb7185}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -206,14 +207,22 @@ const tx=async(mode,f)=>{const d=await idb();return new Promise((ok,no)=>{const 
 const PAL=[['#2e1065','#a855f7'],['#1e1b4b','#c026d3'],['#3b0764','#8b5cf6'],['#4a044e','#d946ef'],['#2e1065','#e879f9']];
 function addBeat(t){BEATS.push({id:t.id,name:t.name,dur:t.dur,custom:1,file:URL.createObjectURL(t.audio),img:t.cover?URL.createObjectURL(t.cover):'',c:t.c,sc:t.sc,rec:t})}
 async function loadCustom(){try{for(const t of await tx('readonly',o=>o.getAll()))if(!BEATS.some(b=>b.id===t.id))addBeat(t)}catch{}}
+async function makePreview(file,sec=35){
+ const buf=await ac().decodeAudioData(await file.arrayBuffer()),sr=buf.sampleRate,n=Math.min(buf.length,Math.floor(sr*sec)),fd=Math.floor(sr*3),
+ L=buf.getChannelData(0),R=buf.numberOfChannels>1?buf.getChannelData(1):L,l=new Int16Array(n),r=new Int16Array(n);
+ for(let i=0;i<n;i++){const g=i>n-fd?(n-i)/fd:1;l[i]=Math.max(-1,Math.min(1,L[i]*g))*32767;r[i]=Math.max(-1,Math.min(1,R[i]*g))*32767}
+ const enc=new lamejs.Mp3Encoder(2,sr,128),out=[];
+ for(let i=0;i<n;i+=1152){const d=enc.encodeBuffer(l.subarray(i,i+1152),r.subarray(i,i+1152));if(d.length)out.push(new Uint8Array(d))}
+ const e=enc.flush();if(e.length)out.push(new Uint8Array(e));
+ const t=Math.round(buf.duration);return{blob:new Blob(out,{type:'audio/mpeg'}),dur:Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}}
 async function addTrack(){
  const n=$('#tn').value.trim(),a=$('#ta').files[0],cv=$('#tc').files[0],er=$('#te');
  if(n.length<2)return er.textContent='Введи название трека';
  if(!a||!(/^audio\//.test(a.type)||/\.(mp3|wav|m4a|ogg)$/i.test(a.name)))return er.textContent='Выбери аудиофайл (mp3 или wav)';
  if(cv&&!/^image\//.test(cv.type))return er.textContent='Обложка должна быть картинкой';
- er.textContent='Загружаю…';
- const dur=await new Promise(r=>{const x=new Audio(URL.createObjectURL(a));x.onloadedmetadata=()=>{const s=Math.round(x.duration)||0;r(Math.floor(s/60)+':'+String(s%60).padStart(2,'0'))};x.onerror=()=>r('—')});
- const id=Date.now(),t={id,name:n,dur,audio:a,cover:cv||null,an:a.name,cn:cv?cv.name:'',c:PAL[id%5],sc:1+id%5};
+ er.textContent='Обрезаю до 35 секунд…';
+ let pv;try{pv=await makePreview(a)}catch(e){return er.textContent='Не удалось обработать аудио. Попробуй mp3 или wav'}const dur=pv.dur;
+ const id=Date.now(),t={id,name:n,dur,audio:pv.blob,cover:cv||null,an:'preview.mp3',cn:cv?cv.name:'',c:PAL[id%5],sc:1+id%5};
  try{await tx('readwrite',o=>o.put(t))}catch{return er.textContent='Не удалось сохранить: в браузере не хватает места'}
  addBeat(t);win();toast('Трек добавлен');show('admin')}
 async function delTrack(id){if(!confirm('Удалить трек с сайта? Прошлые продажи в истории останутся.'))return;
@@ -225,7 +234,7 @@ function exportTrack(id){const b=BEATS.find(x=>x.id==id),t=b.rec,ext=n=>(n.match
  dl(t.audio,af);if(cf)setTimeout(()=>dl(t.cover,cf),500);
  navigator.clipboard?.writeText(`{id:${t.id},name:'${t.name.replace(/'/g,"\\'")}',dur:'${t.dur}',file:'beats/${af}',${cf?`img:'covers/${cf}',`:''}c:${JSON.stringify(t.c)},sc:${t.sc}},`);
  toast('Файлы скачаны, строка для BEATS скопирована')}
-function addBox(){const cl=BEATS.filter(b=>b.custom);return `<div class="add"><h3 style="margin-bottom:12px">Добавить трек</h3><div class="g"><div><label>Название</label><input id="tn" placeholder="Например, Midnight"></div><div><label>Аудиофайл (mp3 / wav)</label><input id="ta" type="file" accept="audio/*"></div><div><label>Обложка (необязательно)</label><input id="tc" type="file" accept="image/*"></div></div><div class="err" id="te"></div><button class="btn" onclick="addTrack()">Добавить трек</button><p class="small" style="margin-top:10px">Без обложки сайт нарисует её сам в общем стиле. Добавленные треки видны только в этом браузере — чтобы их увидели все, нажми «Для GitHub».</p>`+(cl.length?`<div style="margin-top:14px">`+cl.map(b=>`<div class="chk"><span>🎵</span><span>${esc(b.name)}</span><em><button class="btn ghost sm" onclick="exportTrack(${b.id})">Для GitHub</button><button class="btn ghost sm" onclick="delTrack(${b.id})">Удалить</button></em></div>`).join('')+'</div>':'')+`</div>`}
+function addBox(){const cl=BEATS.filter(b=>b.custom);return `<div class="add"><h3 style="margin-bottom:12px">Добавить трек</h3><div class="g"><div><label>Название</label><input id="tn" placeholder="Например, Midnight"></div><div><label>Аудиофайл (mp3 / wav)</label><input id="ta" type="file" accept="audio/*"></div><div><label>Обложка (необязательно)</label><input id="tc" type="file" accept="image/*"></div></div><div class="err" id="te"></div><button class="btn" onclick="addTrack()">Добавить трек</button><p class="small" style="margin-top:10px">Трек автоматически обрезается до 35-секундного превью (с затуханием), полный файл остаётся только у тебя. Без обложки сайт нарисует её сам в общем стиле. Добавленные треки видны только в этом браузере — чтобы их увидели все, нажми «Для GitHub».</p>`+(cl.length?`<div style="margin-top:14px">`+cl.map(b=>`<div class="chk"><span>🎵</span><span>${esc(b.name)}</span><em><button class="btn ghost sm" onclick="exportTrack(${b.id})">Для GitHub</button><button class="btn ghost sm" onclick="delTrack(${b.id})">Удалить</button></em></div>`).join('')+'</div>':'')+`</div>`}
 
 function approve(id){const o=orders();o.find(x=>x.id===id).status='paid';sv('orders',o);show('admin')}
 function csv(){const r=[['Дата','Покупатель','Бит','Формат','Сумма','Дата чека','Получатель','Статус'],...orders().map(x=>[x.at,x.name,bn(x.beat),(x.fmt||'mp3'),x.price,x.rdate,x.rto,x.status])];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+r.map(l=>l.map(c=>`"${c??''}"`).join(';')).join('\n')],{type:'text/csv'}));a.download='sales.csv';a.click()}
