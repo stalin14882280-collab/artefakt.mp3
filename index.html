@@ -6,6 +6,7 @@
 <title>ARTEFAKT — биты</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
 :root{--bg:#050309;--p:#a855f7;--p2:#6d28d9;--pk:#e879f9;--card:#0f0819;--line:#2b1648;--t:#f5ecff;--m:#8f7bb0;--ok:#4ade80;--bad:#fb7185}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -115,9 +116,13 @@ th{color:var(--m);font-weight:600}
 
 <script>
 /* ===== НАСТРОЙКИ ===== */
-const PHONE='89131264135', ADMIN='artefakt';
+const PHONE='89131264135';
+/* Облако (Supabase): Project URL и anon public key из Settings → API. Ключ публичный — это нормально, данные защищены правилами в supabase-setup.sql */
+const SB_URL='https://gccfbrltcgajuifpzlvd.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjY2Zicmx0Y2dhanVpZnB6bHZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU2OTAwMTIsImV4cCI6MjExMTI2NjAxMn0.7BH5_ksWoGJlktoINu49kPYt3kh-2rTOHA5wBHyWZcc';
+const sb=(window.supabase&&SB_URL.startsWith('https'))?supabase.createClient(SB_URL,SB_KEY):null;
+let ORD=[],SOLDIDS=[],NUSERS=0;
 const P={mp3:1000,wav:1600};
-const SOLD=[]; // id проданных битов для ВСЕХ посетителей (кнопка «Список проданных для GitHub» в админке)
+const SOLD=[]; // можно вручную скрыть бит у всех: впиши его id
 const BEATS=[ // file — 35-сек превью из папки beats/
  {id:1,name:'Contract',dur:'2:59',file:'beats/contract.mp3',c:['#2e1065','#a855f7']},
  {id:2,name:'Monopoly',dur:'1:55',file:'beats/monopoly.mp3',c:['#1e1b4b','#c026d3']},
@@ -156,30 +161,55 @@ $('#snd').onclick=()=>{mute=!mute;$('#snd').textContent=mute?'🔇':'🔊'};
 document.addEventListener('pointerover',e=>{const b=e.target.closest('button,.beat,.tab');if(b&&!b.contains(e.relatedTarget))hat()});
 document.addEventListener('pointerdown',e=>{if(e.target.closest('button'))kk()});
 
-/* ===== АВТОРИЗАЦИЯ ===== */
+/* ===== АВТОРИЗАЦИЯ (Supabase, работает на любых устройствах) ===== */
 let mode='in';
 const setMode=m=>{mode=m;$('#tl').classList.toggle('on',m=='in');$('#tr').classList.toggle('on',m=='up');$('#p2').classList.toggle('hide',m=='in');$('#tg').classList.toggle('hide',m=='in');$('#go').textContent=m=='in'?'Войти':'Создать аккаунт';$('#err').textContent=''};
 $('#tl').onclick=()=>setMode('in');$('#tr').onclick=()=>setMode('up');
+const mail=async u=>(await sha('u:'+u.toLowerCase())).slice(0,40)+'@artefakt.app';
 $('#go').onclick=async()=>{
- const u=$('#u').value.trim(),p=$('#p').value,users=ld('users',{}),k=u.toLowerCase(),er=$('#err');
+ const u=$('#u').value.trim(),p=$('#p').value,er=$('#err'),btn=$('#go');
+ if(!sb)return er.textContent='Облако не подключено: впиши SB_URL и SB_KEY в index.html';
  if(!/^[\wа-яё-]{3,20}$/i.test(u))return er.textContent='Имя: 3–20 символов, буквы и цифры';
  if(p.length<6)return er.textContent='Пароль минимум 6 символов';
- if(mode=='up'){
-  if(p!==$('#p2').value)return er.textContent='Пароли не совпадают';
-  const tg=tgN($('#tg').value);if(!tg)return er.textContent='Укажи Telegram: @username (5–32 символа, латиница, цифры, _)';
-  if(users[k])return er.textContent='Такое имя уже занято';
-  const salt=crypto.getRandomValues(new Uint32Array(4)).join('-');
-  users[k]={name:u,tg,salt,hash:await sha(salt+p),at:new Date().toISOString()};sv('users',users);
- }else{
-  const x=users[k];if(!x||x.hash!==await sha(x.salt+p))return er.textContent='Неверное имя или пароль';
- }
- sessionStorage.setItem('ses',k);enter();
+ btn.disabled=true;er.textContent='';
+ try{
+  const em=await mail(u);
+  if(mode=='up'){
+   if(p!==$('#p2').value)return er.textContent='Пароли не совпадают';
+   const tg=tgN($('#tg').value);if(!tg)return er.textContent='Укажи Telegram: @username (5–32 символа, латиница, цифры, _)';
+   const {data,error}=await sb.auth.signUp({email:em,password:p});
+   if(error)return er.textContent=/registered|already/i.test(error.message)?'Такое имя уже занято':'Ошибка: '+error.message;
+   if(!data.session)return er.textContent='В Supabase отключи подтверждение почты (Confirm email)';
+   const r=await sb.from('profiles').insert({id:data.user.id,username:u,tg});
+   if(r.error){await sb.auth.signOut();return er.textContent=/duplicate|unique/i.test(r.error.message)?'Такое имя уже занято':'Ошибка: '+r.error.message}
+  }else{
+   const {error}=await sb.auth.signInWithPassword({email:em,password:p});
+   if(error)return er.textContent='Неверное имя или пароль';
+  }
+  await enter();
+ }catch(e){er.textContent='Нет связи с сервером. Проверь интернет'}finally{btn.disabled=false}
 };
 ['u','p','p2','tg'].forEach(i=>$('#'+i).addEventListener('keydown',e=>e.key=='Enter'&&$('#go').click()));
-function enter(){const k=sessionStorage.getItem('ses'),x=ld('users',{})[k];if(!x)return;me={k,name:x.name,tg:x.tg||'',admin:k===ADMIN};
- $('#auth').classList.add('hide');$('#app').classList.remove('hide');$('#who').textContent=x.name;$('#adm').classList.toggle('hide',!me.admin);show('shop')}
-$('#out').onclick=()=>{stop();sessionStorage.removeItem('ses');location.reload()};
-document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
+async function sync(){
+ if(!sb)return;
+ try{
+  const [o,sd,t]=await Promise.all([sb.from('orders').select('*').order('at'),sb.rpc('sold_ids'),sb.from('tracks').select('*').order('id')]);
+  if(o.data)ORD=o.data.map(r=>({id:r.id,user:r.user_id,name:r.username,tg:r.tg,beat:Number(r.beat),fmt:r.fmt,price:r.price,at:r.at,rdate:r.rdate,ramount:r.ramount,rto:r.rto,fp:r.fp,status:r.status,released:r.released}));
+  if(sd.data)SOLDIDS=sd.data.map(Number);
+  if(t.data){for(let i=BEATS.length-1;i>=0;i--)if(BEATS[i].custom)BEATS.splice(i,1);t.data.forEach(r=>BEATS.push({id:Number(r.id),name:r.name,dur:r.dur,custom:1,file:r.audio_url,img:r.cover_url||'',c:r.c,sc:r.sc}))}
+  if(me&&me.admin){const c=await sb.from('profiles').select('id',{count:'exact',head:true});NUSERS=c.count||0}
+ }catch(e){}
+}
+async function enter(){
+ if(!sb)return;const {data:{session}}=await sb.auth.getSession();if(!session)return;const uid=session.user.id;
+ const [pr,ad]=await Promise.all([sb.from('profiles').select('username,tg').eq('id',uid).maybeSingle(),sb.from('admins').select('user_id').eq('user_id',uid).maybeSingle()]);
+ if(!pr.data){await sb.auth.signOut();return}
+ me={k:uid,name:pr.data.username,tg:pr.data.tg||'',admin:!!ad.data};
+ $('#auth').classList.add('hide');$('#app').classList.remove('hide');$('#who').textContent=me.name;$('#adm').classList.toggle('hide',!me.admin);
+ await sync();show('shop')}
+$('#out').onclick=async()=>{stop();if(sb)await sb.auth.signOut();location.reload()};
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>sync().then(()=>show(t.dataset.v)));
+setInterval(()=>{if(me&&cur=='shop'&&!playing&&!document.querySelector('.modal'))sync().then(()=>show('shop'))},45000);
 
 /* ===== ПРЕВЬЮ ===== */
 function stop(){clearInterval(loop);if(aud){aud.pause();aud=null}playing=null}
@@ -192,26 +222,22 @@ function play(i){const was=playing;stop();if(was===i)return show(cur);playing=i;
 /* ===== ВИДЫ ===== */
 let cur='shop';
 function show(v){cur=v;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v==v));$('#view').innerHTML=v=='shop'?shop():v=='my'?mine():admin()}
-const orders=()=>ld('orders',[]);
-const sold=id=>SOLD.includes(id)||orders().some(o=>o.beat===id&&!o.released);
+const orders=()=>ORD;
+const sold=id=>SOLD.includes(id)||SOLDIDS.includes(id);
 const owned=id=>orders().some(o=>o.user===me.k&&o.beat===id&&o.status==='paid');
 function shop(){return `<h2>Биты ARTEFAKT</h2><p class="lead">Послушай превью, выбери формат — MP3 за ${rub(P.mp3)} или WAV за ${rub(P.wav)} — и оплати переводом. Чек проверяется автоматически.</p><div class="beats">`+(BEATS.filter(b=>!sold(b.id)).map(b=>{
  const bars=Array.from({length:14},(_,i)=>`<i style="animation-delay:${(i*.07).toFixed(2)}s;height:${20+(i*37+b.id*13)%60}%"></i>`).join('');
  return `<div class="beat"><div class="art ${playing==b.id?'pl':''}${b.img?' im':''}">${b.img?`<img src="${b.img}" alt="">`:art(b)}<b>${b.dur}</b>${bars}</div><div class="info"><h3>${esc(b.name)}</h3><div class="meta">MP3 ${rub(P.mp3)} · WAV ${rub(P.wav)}</div><div class="row"><span class="small">Превью 0:35</span><span><button class="btn ghost sm" onclick="play(${b.id})">${playing==b.id?'⏸ Стоп':'▶ Слушать'}</button> ${owned(b.id)?'<span class="tag ok">Куплен</span>':`<button class="btn sm" onclick="buy(${b.id})">Купить</button>`}</span></div></div></div>`}).join('')||'<p class="small">Все биты проданы. Скоро появятся новые.</p>')+'</div>'}
 function mine(){const o=orders().filter(x=>x.user===me.k);return `<h2>Мои покупки</h2><p class="lead">Здесь появляются купленные биты.</p>`+(o.length?`<div class="tw"><table><tr><th>Бит</th><th>Сумма</th><th>Дата</th><th>Статус</th><th></th></tr>`+o.map(x=>{const b=BEATS.find(y=>y.id==x.beat)||{name:'(удалён)'};return `<tr><td>${esc(b.name)} <span class="small">${(x.fmt||'mp3').toUpperCase()}</span></td><td>${rub(x.price)}</td><td>${new Date(x.at).toLocaleString('ru-RU')}</td><td><span class="tag ${x.status=='paid'?'ok':'wait'}">${x.status=='paid'?'Оплачен':'На проверке'}</span></td><td>${x.status=='paid'?(b.full?`<a href="${b.full}" download style="color:var(--pk)">Скачать</a>`:`<span class="small">файл придёт в Telegram ${me.tg?'@'+esc(me.tg):''}</span>`):''}</td></tr>`}).join('')+'</table></div>':'<p class="small">Покупок пока нет. Открой вкладку «Биты».</p>')}
-function admin(){if(!me.admin)return'';const o=orders(),paid=o.filter(x=>x.status==='paid'),sum=paid.reduce((a,x)=>a+x.price,0),users=Object.keys(ld('users',{})).length,wait=o.filter(x=>x.status!=='paid').length;
+function admin(){if(!me.admin)return'';const o=orders(),paid=o.filter(x=>x.status==='paid'),sum=paid.reduce((a,x)=>a+x.price,0),users=NUSERS,wait=o.filter(x=>x.status!=='paid').length;
  const per=BEATS.map(b=>({b,n:paid.filter(x=>x.beat==b.id).length,s:paid.filter(x=>x.beat==b.id).reduce((a,x)=>a+x.price,0)})),mx=Math.max(1,...per.map(p=>p.s));
  return `<h2>Админ-панель</h2><p class="lead">Продажи и прибыль.</p><div class="stats"><div class="st"><span class="small">Прибыль</span><b>${rub(sum)}</b></div><div class="st"><span class="small">Продано битов</span><b>${paid.length}</b></div><div class="st"><span class="small">Ждут проверки</span><b>${wait}</b></div><div class="st"><span class="small">Пользователей</span><b>${users}</b></div></div>
  ${addBox()}${soldBox()}<h3 style="margin:10px 0">Прибыль по битам</h3><div class="tw" style="margin-bottom:26px"><table><tr><th>Бит</th><th>Продаж</th><th>Прибыль</th><th></th></tr>${per.map(p=>`<tr><td>${esc(p.b.name)}</td><td>${p.n}</td><td>${rub(p.s)}</td><td><div class="pb"><div style="width:${p.s/mx*100}%"></div></div></td></tr>`).join('')}</table></div>
- <div class="row" style="margin:10px 0"><h3>История покупок</h3><span><button class="btn ghost sm" onclick="copySold()">Список проданных для GitHub</button> <button class="btn ghost sm" onclick="csv()">Скачать CSV</button></span></div><div class="tw"><table><tr><th>Дата</th><th>Покупатель</th><th>Бит</th><th>Сумма</th><th>Чек (дата / получатель)</th><th>Статус</th><th></th></tr>`+
+ <div class="row" style="margin:10px 0"><h3>История покупок</h3><span><button class="btn ghost sm" onclick="csv()">Скачать CSV</button></span></div><div class="tw"><table><tr><th>Дата</th><th>Покупатель</th><th>Бит</th><th>Сумма</th><th>Чек (дата / получатель)</th><th>Статус</th><th></th></tr>`+
  (o.length?o.slice().reverse().map(x=>`<tr><td>${new Date(x.at).toLocaleString('ru-RU')}</td><td>${esc(x.name)}${x.tg?`<br><a href="https://t.me/${esc(x.tg)}" target="_blank" rel="noopener" style="color:var(--pk)">@${esc(x.tg)}</a>`:''}</td><td>${esc(bn(x.beat))} <span class="small">${(x.fmt||'mp3').toUpperCase()}</span></td><td>${rub(x.price)}</td><td class="small">${esc(x.rdate||'—')} · ${rub(x.ramount||0)}<br>${esc(x.rto||'—')}</td><td><span class="tag ${x.status=='paid'?'ok':'wait'}">${x.status=='paid'?'Оплачен':'Проверка'}</span></td><td>${x.status!=='paid'?`<button class="btn sm" onclick="approve('${x.id}')">Подтвердить</button> <button class="btn ghost sm" onclick="reject('${x.id}')">Отклонить</button>`:''}</td></tr>`).join(''):'<tr><td colspan="7" class="small">Пока пусто</td></tr>')+'</table></div>'}
-/* ===== СВОИ ТРЕКИ (IndexedDB, хранятся в браузере админа) ===== */
+/* ===== ТРЕКИ В ОБЛАКЕ ===== */
 const bn=id=>(BEATS.find(y=>y.id==id)||{name:'(удалён)'}).name;
-const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open('artefakt',1);r.onupgradeneeded=()=>r.result.createObjectStore('tracks',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
-const tx=async(mode,f)=>{const d=await idb();return new Promise((ok,no)=>{const t=d.transaction('tracks',mode),q=f(t.objectStore('tracks'));t.oncomplete=()=>ok(q&&q.result);t.onerror=()=>no(t.error)})};
 const PAL=[['#2e1065','#a855f7'],['#1e1b4b','#c026d3'],['#3b0764','#8b5cf6'],['#4a044e','#d946ef'],['#2e1065','#e879f9']];
-function addBeat(t){BEATS.push({id:t.id,name:t.name,dur:t.dur,custom:1,file:URL.createObjectURL(t.audio),img:t.cover?URL.createObjectURL(t.cover):'',c:t.c,sc:t.sc,rec:t})}
-async function loadCustom(){try{for(const t of await tx('readonly',o=>o.getAll()))if(!BEATS.some(b=>b.id===t.id))addBeat(t)}catch{}}
 async function makePreview(file,sec=35){
  const buf=await ac().decodeAudioData(await file.arrayBuffer()),sr=buf.sampleRate,n=Math.min(buf.length,Math.floor(sr*sec)),fd=Math.floor(sr*3),
  L=buf.getChannelData(0),R=buf.numberOfChannels>1?buf.getChannelData(1):L,l=new Int16Array(n),r=new Int16Array(n);
@@ -226,26 +252,26 @@ async function addTrack(){
  if(!a||!(/^audio\//.test(a.type)||/\.(mp3|wav|m4a|ogg)$/i.test(a.name)))return er.textContent='Выбери аудиофайл (mp3 или wav)';
  if(cv&&!/^image\//.test(cv.type))return er.textContent='Обложка должна быть картинкой';
  er.textContent='Обрезаю до 35 секунд…';
- let pv;try{pv=await makePreview(a)}catch(e){return er.textContent='Не удалось обработать аудио. Попробуй mp3 или wav'}const dur=pv.dur;
- const id=Date.now(),t={id,name:n,dur,audio:pv.blob,cover:cv||null,an:'preview.mp3',cn:cv?cv.name:'',c:PAL[id%5],sc:1+id%5};
- try{await tx('readwrite',o=>o.put(t))}catch{return er.textContent='Не удалось сохранить: в браузере не хватает места'}
- addBeat(t);win();toast('Трек добавлен');show('admin')}
-async function delTrack(id){if(!confirm('Удалить трек с сайта? Прошлые продажи в истории останутся.'))return;
- try{await tx('readwrite',o=>o.delete(id))}catch{}
- if(playing==id)stop();const i=BEATS.findIndex(b=>b.id==id);if(i>=0)BEATS.splice(i,1);show('admin')}
-function exportTrack(id){const b=BEATS.find(x=>x.id==id),t=b.rec,ext=n=>(n.match(/\.\w+$/)||[''])[0].toLowerCase(),
- slug=t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'track'+t.id,af=slug+ext(t.an),cf=t.cover?slug+ext(t.cn||'.jpg'):'';
- const dl=(f,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=n;a.click()};
- dl(t.audio,af);if(cf)setTimeout(()=>dl(t.cover,cf),500);
- navigator.clipboard?.writeText(`{id:${t.id},name:'${t.name.replace(/'/g,"\\'")}',dur:'${t.dur}',file:'beats/${af}',${cf?`img:'covers/${cf}',`:''}c:${JSON.stringify(t.c)},sc:${t.sc}},`);
- toast('Файлы скачаны, строка для BEATS скопирована')}
-function addBox(){const cl=BEATS.filter(b=>b.custom);return `<div class="add"><h3 style="margin-bottom:12px">Добавить трек</h3><div class="g"><div><label>Название</label><input id="tn" placeholder="Например, Midnight"></div><div><label>Аудиофайл (mp3 / wav)</label><input id="ta" type="file" accept="audio/*"></div><div><label>Обложка (необязательно)</label><input id="tc" type="file" accept="image/*"></div></div><div class="err" id="te"></div><button class="btn" onclick="addTrack()">Добавить трек</button><p class="small" style="margin-top:10px">Трек автоматически обрезается до 35-секундного превью (с затуханием), полный файл остаётся только у тебя. Без обложки сайт нарисует её сам в общем стиле. Добавленные треки видны только в этом браузере — чтобы их увидели все, нажми «Для GitHub».</p>`+(cl.length?`<div style="margin-top:14px">`+cl.map(b=>`<div class="chk"><span>🎵</span><span>${esc(b.name)}</span><em><button class="btn ghost sm" onclick="exportTrack(${b.id})">Для GitHub</button><button class="btn ghost sm" onclick="delTrack(${b.id})">Удалить</button></em></div>`).join('')+'</div>':'')+`</div>`}
+ let pv;try{pv=await makePreview(a)}catch(e){return er.textContent='Не удалось обработать аудио. Попробуй mp3 или wav'}
+ er.textContent='Загружаю в облако…';
+ const id=Date.now(),ext=cv?((cv.name.match(/\.(\w+)$/)||[,'jpg'])[1]).toLowerCase():'',st=sb.storage.from('media');let ci='';
+ try{
+  let u=await st.upload(`beats/${id}.mp3`,pv.blob,{contentType:'audio/mpeg'});if(u.error)throw u.error;
+  const au=st.getPublicUrl(`beats/${id}.mp3`).data.publicUrl;
+  if(cv){u=await st.upload(`covers/${id}.${ext}`,cv,{contentType:cv.type});if(u.error)throw u.error;ci=st.getPublicUrl(`covers/${id}.${ext}`).data.publicUrl}
+  const r=await sb.from('tracks').insert({id,name:n,dur:pv.dur,audio_url:au,cover_url:ci,c:PAL[id%5],sc:1+id%5});if(r.error)throw r.error;
+ }catch(e){return er.textContent='Не удалось загрузить: '+(e.message||e)}
+ await sync();win();toast('Трек добавлен и виден всем');show('admin')}
+async function delTrack(id){if(!confirm('Удалить трек с сайта? Прошлые продажи в истории останутся.'))return;const b=BEATS.find(x=>x.id==id),f=[`beats/${id}.mp3`];if(b&&b.img)f.push('covers/'+b.img.split('/').pop());
+ await sb.from('tracks').delete().eq('id',id);await sb.storage.from('media').remove(f);
+ if(playing==id)stop();await sync();show('admin')}
+function addBox(){const cl=BEATS.filter(b=>b.custom);return `<div class="add"><h3 style="margin-bottom:12px">Добавить трек</h3><div class="g"><div><label>Название</label><input id="tn" placeholder="Например, Midnight"></div><div><label>Аудиофайл (mp3 / wav)</label><input id="ta" type="file" accept="audio/*"></div><div><label>Обложка (необязательно)</label><input id="tc" type="file" accept="image/*"></div></div><div class="err" id="te"></div><button class="btn" onclick="addTrack()">Добавить трек</button><p class="small" style="margin-top:10px">Трек автоматически обрезается до 35-секундного превью (с затуханием), полный файл остаётся только у тебя. Без обложки сайт нарисует её сам в общем стиле. Трек сразу виден всем посетителям.</p>`+(cl.length?`<div style="margin-top:14px">`+cl.map(b=>`<div class="chk"><span>🎵</span><span>${esc(b.name)}</span><em><button class="btn ghost sm" onclick="delTrack(${b.id})">Удалить</button></em></div>`).join('')+'</div>':'')+`</div>`}
 
-function reject(id){if(!confirm('Отклонить заказ? Бит вернётся в продажу.'))return;sv('orders',orders().filter(x=>x.id!==id));show('admin')}
-function copySold(){const ids=[...new Set(orders().filter(o=>o.status==='paid'&&!o.released).map(o=>o.beat))];navigator.clipboard?.writeText('const SOLD='+JSON.stringify(ids)+';');toast('Скопировано. Вставь вместо const SOLD=[]; в index.html')}
-function release(id){if(!confirm('Вернуть бит в продажу? История и прибыль сохранятся.'))return;const o=orders();o.forEach(x=>{if(x.beat===id)x.released=true});sv('orders',o);toast(SOLD.includes(id)?'Ещё удали id '+id+' из SOLD в index.html':'Бит снова в продаже');show('admin')}
 function soldBox(){const l=BEATS.filter(b=>sold(b.id));return `<div class="add"><h3 style="margin-bottom:12px">Проданные биты</h3>`+(l.length?l.map(b=>{const o=orders().filter(x=>x.beat===b.id&&!x.released).pop();return `<div class="chk"><span>🔒</span><span>${esc(b.name)}</span><em>${o?esc(o.name)+' · '+(o.status=='paid'?'оплачен':'на проверке')+' ':'в списке SOLD '}<button class="btn sm" onclick="release(${b.id})">Вернуть в продажу</button></em></div>`}).join(''):'<p class="small">Сейчас все биты в продаже.</p>')+`</div>`}
-function approve(id){const o=orders();o.find(x=>x.id===id).status='paid';sv('orders',o);show('admin')}
+async function upd(q){const r=await q;if(r.error)toast('Ошибка: '+r.error.message);await sync();show('admin')}
+const approve=id=>upd(sb.from('orders').update({status:'paid'}).eq('id',id));
+const reject=id=>confirm('Отклонить заказ? Бит вернётся в продажу.')&&upd(sb.from('orders').delete().eq('id',id));
+const release=id=>confirm('Вернуть бит в продажу? История и прибыль сохранятся.')&&upd(sb.from('orders').update({released:true}).eq('beat',id));
 function csv(){const r=[['Дата','Покупатель','Telegram','Бит','Формат','Сумма','Дата чека','Получатель','Статус'],...orders().map(x=>[x.at,x.name,x.tg,bn(x.beat),(x.fmt||'mp3'),x.price,x.rdate,x.rto,x.status])];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+r.map(l=>l.map(c=>`"${c??''}"`).join(';')).join('\n')],{type:'text/csv'}));a.download='sales.csv';a.click()}
 
 /* ===== ПОКУПКА + РАСПОЗНАВАНИЕ ЧЕКА ===== */
@@ -270,7 +296,7 @@ function buy(id){const b=BEATS.find(x=>x.id==id);let fmt='mp3';const pr=()=>P[fm
  el.querySelector('#x').onclick=close;el.querySelectorAll('#fm button').forEach(x=>x.onclick=()=>{fmt=x.dataset.f;el.querySelectorAll('#fm button').forEach(y=>y.classList.toggle('on',y===x));el.querySelector('#amt').textContent=rub(pr())});el.querySelector('#cp').onclick=()=>{navigator.clipboard?.writeText(PHONE);el.querySelector('#cp').textContent='Скопировано ✓'};
  el.querySelector('#chk').onclick=async()=>{
   const f=el.querySelector('#f').files[0],res=el.querySelector('#res');if(!f)return res.innerHTML='<p class="err">Выбери файл с чеком</p>';
-  if(!me.tg){const v=tgN(el.querySelector('#tgi').value);if(!v)return res.innerHTML='<p class="err">Укажи Telegram (@username), чтобы получить файл</p>';const us=ld('users',{});if(us[me.k])us[me.k].tg=v;sv('users',us);me.tg=v}
+  if(!me.tg){const v=tgN(el.querySelector('#tgi').value);if(!v)return res.innerHTML='<p class="err">Укажи Telegram (@username), чтобы получить файл</p>';await sb.from('profiles').update({tg:v}).eq('id',me.k);me.tg=v}
   const fp=[f.name,f.size,f.lastModified].join('|');if(orders().some(o=>o.fp===fp))return res.innerHTML='<p class="err">Этот чек уже использован</p>';
   const bar=el.querySelector('#bar');bar.classList.remove('hide');const fill=bar.firstElementChild;res.innerHTML='<p class="small">Читаю чек…</p>';
   let text;try{text=(await Tesseract.recognize(f,'rus+eng',{logger:m=>{if(m.progress)fill.style.width=Math.round(m.progress*100)+'%'}})).data.text}catch{return res.innerHTML='<p class="err">Не удалось распознать. Проверь интернет и попробуй снова.</p>'}
@@ -280,11 +306,14 @@ function buy(id){const b=BEATS.find(x=>x.id==id);let fmt='mp3';const pr=()=>P[fm
   res.innerHTML=c.map(x=>`<div class="chk"><span>${x[0]?'✅':'❌'}</span><span>${x[1]}</span><em>${x[2]}</em></div>`).join('')+(ok?'':'<p class="small" style="margin-top:8px">Не всё совпало. Можно отправить чек на ручную проверку — битмейкер подтвердит вручную.</p>');
   const o=orders(),rec={id:'o'+Date.now(),user:me.k,name:me.name,tg:me.tg||'',beat:b.id,price:pr(),fmt,at:new Date().toISOString(),rdate:d2(r.date),ramount:r.amount,rto:(r.to||'')+' '+(r.phone||''),fp,status:ok?'paid':'pending'};
   const act=el.querySelector('#chk');act.textContent=ok?'Готово':'Отправить на проверку';
-  act.onclick=()=>{if(sold(b.id)){close();return toast('Этот бит уже продан')}o.push(rec);sv('orders',o);close();if(ok){win();toast('Покупка успешна! 🔥')}else toast('Чек отправлен на проверку');show(cur)};
+  act.onclick=async()=>{act.disabled=true;
+   const {error}=await sb.from('orders').insert({user_id:me.k,username:me.name,tg:me.tg,beat:b.id,fmt:rec.fmt,price:rec.price,rdate:rec.rdate,ramount:rec.ramount,rto:rec.rto,fp:rec.fp,status:rec.status});
+   if(error){act.disabled=false;const m=error.message||'';return res.innerHTML='<p class="err">'+(/one_sale/.test(m)?'Этот бит уже продан':/orders_fp/.test(m)?'Этот чек уже использован':'Ошибка: '+esc(m))+'</p>'}
+   await sync();close();if(ok){win();toast('Покупка успешна! 🔥')}else toast('Чек отправлен на проверку');show(cur)};
   if(ok){act.click()}
  }}
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3200)}
-loadCustom().then(()=>{if(me)show(cur);else if(sessionStorage.getItem('ses'))enter()});
+if(sb)sb.auth.getSession().then(({data})=>{if(data.session)enter()});else $('#err').textContent='Облако не подключено: впиши SB_URL и SB_KEY в index.html';
 </script>
 </body>
 </html>
