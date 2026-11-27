@@ -290,20 +290,68 @@ function csv(){const r=[['Дата','Покупатель','Telegram','Бит','
 
 /* ===== ПОКУПКА + РАСПОЗНАВАНИЕ ЧЕКА ===== */
 const MON='янв фев мар апр мая июн июл авг сен окт ноя дек'.split(' ');
-function parseReceipt(t){
- t=t.replace(/\u00a0/g,' ');const r={date:null,amount:null,to:null,phone:null};
- let m=t.match(/(\d{2})[.\/](\d{2})[.\/](\d{4})/);if(m)r.date=new Date(+m[3],m[2]-1,+m[1]);
- else if(m=t.match(/(\d{1,2})\s+([а-яё]{3,8})\.?,?\s+(\d{4})/i)){const i=MON.indexOf(m[2].slice(0,3).toLowerCase());if(i>=0)r.date=new Date(+m[3],i,+m[1])}
- const num=s=>{const n=parseFloat(s.replace(/\s/g,'').replace(',','.'));return isNaN(n)?null:n};
- m=t.match(/сумм[а-я]*[^\d\n]{0,20}(\d[\d ]*(?:[.,]\d{1,2})?)/i)||t.match(/(\d[\d ]*(?:[.,]\d{1,2})?)\s*(?:₽|руб|RUB|P\b)/i);if(m)r.amount=num(m[1]);
- m=t.match(/(?:получател[ьяе]|кому)[:\s]*([^\n]{3,40})/i);if(m)r.to=m[1].trim();
- m=t.match(/(?:\+7|8)[\s\-()]*(\d{3})[\s\-()]*(\d{3})[\s\-]*(\d{2})[\s\-]*(\d{2})/);if(m)r.phone='8'+m[1]+m[2]+m[3]+m[4];
+const NAME_RX=/илья\s+(?:[а-яё]+\s+)?[аa](?![а-яё])/i; // получатель: Илья А.
+const lines=t=>t.replace(/\u00a0/g,' ').split('\n').map(x=>x.trim()).filter(Boolean);
+/* значение поля: на той же строке после подписи или на следующей */
+function field(L,rx){for(let i=0;i<L.length;i++){const m=L[i].match(rx);if(m){const rest=L[i].slice(m.index+m[0].length).replace(/^[\s:\-–—]+/,'');if(rest.length>1)return rest;if(L[i+1])return L[i+1]}}return ''}
+const NUM=/\d{1,3}(?: \d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?/;
+const num=s=>{const m=(s||'').match(NUM);if(!m)return null;const n=parseFloat(m[0].replace(/ /g,'').replace(',','.'));return isNaN(n)?null:n};
+const phones=t=>[...(t||'').matchAll(/(?:\+?7|8)[\s\-()]*(9\d{2})[\s\-()]*(\d{3})[\s\-]*(\d{2})[\s\-]*(\d{2})/g)].map(m=>m[1]+m[2]+m[3]+m[4]);
+const ham=(a,b)=>{if(a.length!==b.length)return 9;let d=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])d++;return d};
+/* дата и время; чеки банков — по Москве (UTC+3) */
+function pdate(t){
+ let m=t.match(/(\d{1,2})\s+([а-яё]{3,9})\.?,?\s+(\d{4})(?:\s*г\.?)?[,\s]*(?:в\s*)?(?:(\d{1,2}):(\d{2})(?::(\d{2}))?)?/i),y,mo,d,h=0,mi=0,sc=0,tm=false;
+ if(m&&MON.includes(m[2].slice(0,3).toLowerCase())){d=+m[1];mo=MON.indexOf(m[2].slice(0,3).toLowerCase());y=+m[3];if(m[4]){h=+m[4];mi=+m[5];sc=+(m[6]||0);tm=true}}
+ else if(m=t.match(/(\d{2})[.\/](\d{2})[.\/](\d{4})[\s,]*(?:в\s*)?(?:(\d{1,2}):(\d{2})(?::(\d{2}))?)?/)){d=+m[1];mo=m[2]-1;y=+m[3];if(m[4]){h=+m[4];mi=+m[5];sc=+(m[6]||0);tm=true}}
+ else return null;
+ return{t:Date.UTC(y,mo,d,h-3,mi,sc),tm}}
+function parseReceipt(raw){
+ const t=raw.replace(/\u00a0/g,' '),L=lines(raw),r={raw:t};
+ r.fmt=/чек по операции|фио получателя перевода|сбербанк онлайн/i.test(t)?'Сбербанк':/квитанци|итого/i.test(t)?'Т-Банк':'';
+ const d=pdate(t);r.t=d?d.t:null;r.tm=d?d.tm:false;
+ r.A=[num(field(L,/сумма(?:\s+перевода)?/i)),num(field(L,/итого/i)),...[...t.matchAll(/(\d[\d ]*[.,]?\d{0,2})\s*(?:₽|руб|RUB|[PР](?![A-Za-zА-Яа-яЁё]))/gi)].map(m=>num(m[1]))].filter(x=>x!=null);
+ r.name=field(L,/фио\s+получателя(?:\s+перевода)?|^получатель(?![а-яё])/i);
+ r.bank=field(L,/банк\s+получателя/i);
+ r.phones=[...new Set([...phones(field(L,/телефон[а-я]*\s+получателя/i)),...phones(t)])];
+ r.stat=/отклонен|ошибк|не\s+выполнен|в\s+обработке|отменен|не\s+удалось/i.test(t)?'bad':'ok';
+ r.op=((field(L,/(?:номер|идентификатор)\s+операции/i)||'').match(/[A-Za-z0-9]{6,}/)||[''])[0];
  return r}
-const d2=d=>d?d.toLocaleDateString('ru-RU'):'не найдена';
+const mg=(a,b)=>{const r={...a};for(const k in b)if(k!=='raw'&&(r[k]==null||r[k]===''))r[k]=b[k];if(b.t!=null&&(a.t==null||(!a.tm&&b.tm))){r.t=b.t;r.tm=b.tm}
+ r.A=[...new Set([...a.A,...b.A])];r.phones=[...new Set([...a.phones,...b.phones])];r.raw=a.raw+'\n'+b.raw;if(a.stat==='bad'||b.stat==='bad')r.stat='bad';return r};
+const fdt=(t,tm)=>new Date(t).toLocaleString('ru-RU',Object.assign({timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric'},tm?{hour:'2-digit',minute:'2-digit',second:'2-digit'}:{}))+(tm?' МСК':'');
+const rub2=n=>n.toLocaleString('ru-RU',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})+' ₽';
+/* сверка: дата не старше 3 суток, сумма точно, получатель по номеру (или имя + почти совпавший номер), статус не ошибочный */
+function judge(r,want,ffp,now=Date.now()){
+ const age=r.t?(now-r.t)/36e5:null,P10=PHONE.slice(1),name=NAME_RX.test(r.name||'')||NAME_RX.test(r.raw);
+ const exact=r.phones.some(p=>p===P10),near=!exact&&name&&r.phones.some(p=>ham(p,P10)<=1);
+ const amt=r.A.find(x=>Math.abs(x-want)<.005),shown=amt!=null?amt:r.A[0];
+ const ph=r.phones.find(p=>p===P10)||r.phones[0]||'';
+ const c=[
+  [age!=null&&age>=-6&&age<=72,'Дата и время',r.t?fdt(r.t,r.tm)+(age>72?' · старше 3 дней':''):'не найдена'],
+  [amt!=null,'Сумма',shown!=null?rub2(shown)+(amt==null?' · нужно '+rub2(want):''):'не найдена'],
+  [exact,'Получатель',([r.name&&esc(r.name),ph&&'+7 '+ph.slice(0,3)+' '+ph.slice(3,6)+'-'+ph.slice(6,8)+'-'+ph.slice(8)].filter(Boolean).join(' · ')||'не найден')+(near?' · номер похож, нужна ручная проверка':'')],
+  [r.stat!=='bad','Статус',r.stat==='bad'?'перевод не выполнен':'выполнен']];
+ const i=[['Формат чека',esc(r.fmt||'не определён')],r.bank&&['Банк получателя',esc(r.bank)],r.op&&['Номер операции',esc(r.op)]].filter(Boolean);
+ const found=(r.t?1:0)+(r.A.length?1:0)+(r.phones.length?1:0),ok=c.every(x=>x[0]);
+ return{c,i,ok,rdate:r.t?fdt(r.t,r.tm):'',amount:shown!=null?shown:null,to:[r.name,ph,r.bank].filter(Boolean).join(' · '),
+  fp:r.t&&r.tm&&amt!=null?'t:'+r.t+'|'+amt:ffp,
+  hint:found<2?'Чек плохо читается. Загрузи чёткий скриншот целиком: должны быть видны дата, сумма и получатель.':'Не всё совпало. Можно отправить чек на ручную проверку — битмейкер подтвердит вручную.'}}
+/* распознавание: увеличиваем и осветляем картинку, 2 прохода OCR с разными режимами */
+async function prep(f){try{const im=await createImageBitmap(f),k=Math.min(3,Math.max(1,1800/im.width)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);const x=c.getContext('2d');x.filter='grayscale(1) contrast(1.3)';x.drawImage(im,0,0,c.width,c.height);return await new Promise(r=>c.toBlob(r,'image/png'))}catch{return f}}
+/* шапка чека (там у Т-Банка бледная дата): вырезаем верх, увеличиваем и делаем контрастным */
+async function prepHead(f){try{const im=await createImageBitmap(f),y=Math.round(im.height*.05),h=Math.round(im.height*.27),k=Math.min(3,Math.max(1,1800/im.width)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(h*k);const x=c.getContext('2d');x.filter='grayscale(1) brightness(.7) contrast(3)';x.drawImage(im,0,y,im.width,h,0,0,c.width,c.height);return await new Promise(r=>c.toBlob(r,'image/png'))}catch{return null}}
+const done=(r,want)=>r.t&&r.A.some(x=>Math.abs(x-want)<.005)&&r.phones.length;
+async function ocr(f,want,prog){
+ const img=await prep(f),w=await Tesseract.createWorker('rus+eng',1,{logger:m=>{if(m.status==='recognizing text'&&prog)prog(m.progress)}});
+ try{await w.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+  let r=parseReceipt((await w.recognize(img)).data.text);
+  if(!done(r,want)){await w.setParameters({tessedit_pageseg_mode:'4'});r=mg(r,parseReceipt((await w.recognize(f)).data.text))}
+  if(!r.t){const h=await prepHead(f);if(h){await w.setParameters({tessedit_pageseg_mode:'6'});r=mg(r,parseReceipt((await w.recognize(h)).data.text))}}
+  return r}finally{await w.terminate()}}
 function buy(id){const b=BEATS.find(x=>x.id==id);let fmt='mp3';const pr=()=>P[fmt];if(sold(id))return toast('Этот бит уже продан');const el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="mb"><h3>Покупка: ${esc(b.name)}</h3><div class="sw" id="fm"><button data-f="mp3" class="on">MP3 · ${rub(P.mp3)}</button><button data-f="wav">WAV · ${rub(P.wav)}</button></div>
  <p class="small">1. Переведи сумму на Т-Банк по номеру телефона:</p>
  <div class="pay"><big id="amt">${rub(P.mp3)}</big><span>Т-Банк · ${PHONE.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/,'+7 ($2) $3-$4-$5').replace(/^\+7/,'8')}</span><br><button class="btn ghost sm" id="cp" style="margin-top:10px">Скопировать номер</button></div>
- <p class="small">2. Загрузи скриншот электронного чека — сайт сам прочитает дату, сумму и получателя.</p>
+ <p class="small">2. Загрузи скриншот чека из Сбера, Т-Банка или другого банка — сайт сам прочитает дату, сумму и получателя.</p>
  ${me.tg?'':'<input id="tgi" placeholder="Твой Telegram (@username) — туда пришлём файл" style="margin-top:10px">'}<input type="file" id="f" accept="image/*" style="margin-top:10px"><div class="bar hide" id="bar"><div></div></div><div id="res"></div>
  <div class="row" style="margin-top:12px"><button class="btn ghost" id="x">Закрыть</button><button class="btn" id="chk">Проверить чек</button></div></div>`;
  document.body.appendChild(el);const close=()=>el.remove();
@@ -311,14 +359,12 @@ function buy(id){const b=BEATS.find(x=>x.id==id);let fmt='mp3';const pr=()=>P[fm
  el.querySelector('#chk').onclick=async()=>{
   const f=el.querySelector('#f').files[0],res=el.querySelector('#res');if(!f)return res.innerHTML='<p class="err">Выбери файл с чеком</p>';
   if(!me.tg){const v=tgN(el.querySelector('#tgi').value);if(!v)return res.innerHTML='<p class="err">Укажи Telegram (@username), чтобы получить файл</p>';await sb.from('profiles').update({tg:v}).eq('id',me.k);me.tg=v}
-  const fp=[f.name,f.size,f.lastModified].join('|');if(orders().some(o=>o.fp===fp))return res.innerHTML='<p class="err">Этот чек уже использован</p>';
   const bar=el.querySelector('#bar');bar.classList.remove('hide');const fill=bar.firstElementChild;res.innerHTML='<p class="small">Читаю чек…</p>';
-  let text;try{text=(await Tesseract.recognize(f,'rus+eng',{logger:m=>{if(m.progress)fill.style.width=Math.round(m.progress*100)+'%'}})).data.text}catch{return res.innerHTML='<p class="err">Не удалось распознать. Проверь интернет и попробуй снова.</p>'}
-  const r=parseReceipt(text),days=r.date?(Date.now()-r.date)/864e5:99;
-  const c=[[r.date&&days>=-1&&days<=3,'Дата',d2(r.date)],[r.amount===pr(),'Сумма',r.amount!=null?rub(r.amount):'не найдена'],[r.phone===PHONE,'Получатель',(r.to?esc(r.to)+' · ':'')+(r.phone||'номер не найден')]];
-  const ok=c.every(x=>x[0]);
-  res.innerHTML=c.map(x=>`<div class="chk"><span>${x[0]?'✅':'❌'}</span><span>${x[1]}</span><em>${x[2]}</em></div>`).join('')+(ok?'':'<p class="small" style="margin-top:8px">Не всё совпало. Можно отправить чек на ручную проверку — битмейкер подтвердит вручную.</p>');
-  const o=orders(),rec={id:'o'+Date.now(),user:me.k,name:me.name,tg:me.tg||'',beat:b.id,price:pr(),fmt,at:new Date().toISOString(),rdate:d2(r.date),ramount:r.amount,rto:(r.to||'')+' '+(r.phone||''),fp,status:ok?'paid':'pending'};
+  let r;try{r=await ocr(f,pr(),p=>{fill.style.width=Math.round(p*100)+'%'})}catch(e){return res.innerHTML='<p class="err">Не удалось распознать. Проверь интернет и попробуй снова.</p>'}
+  const j=judge(r,pr(),[f.name,f.size,f.lastModified].join('|')),ok=j.ok;
+  if(orders().some(o=>o.fp===j.fp))return res.innerHTML='<p class="err">Этот чек уже использован</p>';
+  res.innerHTML=j.c.map(x=>`<div class="chk"><span>${x[0]?'✅':'❌'}</span><span>${x[1]}</span><em>${x[2]}</em></div>`).join('')+j.i.map(x=>`<div class="chk"><span>ℹ️</span><span>${x[0]}</span><em>${x[1]}</em></div>`).join('')+(ok?'':`<p class="small" style="margin-top:8px">${j.hint}</p>`);
+  const rec={id:'o'+Date.now(),user:me.k,name:me.name,tg:me.tg||'',beat:b.id,price:pr(),fmt,at:new Date().toISOString(),rdate:j.rdate,ramount:j.amount,rto:j.to,fp:j.fp,status:ok?'paid':'pending'};
   const act=el.querySelector('#chk');act.textContent=ok?'Готово':'Отправить на проверку';
   act.onclick=async()=>{act.disabled=true;
    const {error}=await sb.from('orders').insert({user_id:me.k,username:me.name,tg:me.tg,beat:b.id,fmt:rec.fmt,price:rec.price,rdate:rec.rdate,ramount:rec.ramount,rto:rec.rto,fp:rec.fp,status:rec.status});
